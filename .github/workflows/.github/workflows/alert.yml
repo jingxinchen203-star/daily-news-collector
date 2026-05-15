@@ -1,8 +1,8 @@
-name: 病毒紧急预警检查
+name: 紧急预警
 on:
-  schedule:
-    - cron: '*/30 * * * *'   # 每30分钟触发一次，脚本内部判断是否为90分钟倍数
   workflow_dispatch:
+  schedule:
+    - cron: '0 */3 * * *'
 
 jobs:
   check:
