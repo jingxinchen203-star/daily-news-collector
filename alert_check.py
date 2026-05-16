@@ -12,7 +12,7 @@ RECEIVER = "3502739363@qq.com"
 
 
 print("开始执行90分钟紧急检查...")
-
+now = datetime.now()
 # 1. 获取最新病毒相关新闻（过去24小时内，按时间排序）
 today = now.strftime("%Y-%m-%d")
 news_url = "https://newsapi.org/v2/everything"
