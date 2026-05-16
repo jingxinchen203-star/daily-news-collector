@@ -9,12 +9,7 @@ QQ_PASS = os.getenv("QQ_EMAIL_PASSWORD")
 SENDER = "3502739363@qq.com"
 RECEIVER = "3502739363@qq.com"
 
-# 判断当前是否为90分钟的倍数（每30分钟触发一次，但只处理90的倍数）
-now = datetime.now()
-total_minutes = now.hour * 60 + now.minute
-if total_minutes % 90 != 0:
-    print("非90分钟倍数，跳过本次检查")
-    exit(0)
+
 
 print("开始执行90分钟紧急检查...")
 
