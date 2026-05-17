@@ -11,13 +11,13 @@ RECEIVER = "3502739363@qq.com"
 TODAY = datetime.now().strftime("%Y-%m-%d")
 TODAY_CN = datetime.now().strftime("%Y年%m月%d日")
 
-# 1. 抓新闻
+# 1. 抓取全球新闻（不限语言）
 params = {
-    "q": "virus OR outbreak OR 病毒 OR 疫情 OR 感染 OR 人传人",
+    "q": "virus OR outbreak OR pandemic OR epidemic OR 病毒 OR 疫情",
     "from": TODAY,
     "sortBy": "popularity",
     "pageSize": 15,
-    "language": "zh",
+    # 不限语言，搜全球新闻
     "apiKey": NEWS_API_KEY
 }
 try:
@@ -25,17 +25,22 @@ try:
     articles = resp.json().get("articles", [])
     news_list = []
     for a in articles[:10]:
-        news_list.append(f"📰 {a.get('title','无标题')}\n   {a.get('description','')}\n   来源：{a.get('url','')}")
+        title = a.get('title','无标题')
+        desc = a.get('description','')
+        url = a.get('url','')
+        news_list.append(f"📰 {title}\n   {desc}\n   来源：{url}")
     news_text = "\n".join(news_list) if news_list else "（暂无相关新闻）"
 except Exception as e:
     news_text = f"新闻获取失败：{str(e)}"
 
-# 2. AI分析
-prompt = f"""你是一位病毒学与公共卫生专家。以下是今日（{TODAY_CN}）全球病毒/疫情新闻摘要：
+# 2. AI分析（要求翻译英文+输出中文）
+prompt = f"""注意：以下新闻可能包含英文内容，请先将其翻译成中文，再进行分析。最终报告必须全部使用中文输出，不得出现英文。
+
+你是一位病毒学与公共卫生专家。以下是今日（{TODAY_CN}）全球病毒/疫情新闻摘要：
 
 {news_text}
 
-请严格按以下格式输出（不要改变结构，不要加额外说明）：
+请严格按以下格式输出：
 
 【疫情概况】
 分地区列出主要疫情，重点标注感染>30人的事件。
@@ -62,7 +67,6 @@ try:
         json=payload, timeout=30
     )
     raw = ai_resp.json()["choices"][0]["message"]["content"]
-    # 解析AI输出为HTML
     sections = raw.split("【")
     html_body = ""
     for s in sections:
@@ -88,11 +92,11 @@ html = f"""<!DOCTYPE html>
 <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
 <div style="background:linear-gradient(135deg,#1a237e,#0d47a1);padding:20px;text-align:center;">
     <h1 style="color:#fff;margin:0;font-size:22px;">🦠 每日全球病毒疫情简报</h1>
-    <p style="color:#90caf9;margin:5px 0 0;font-size:14px;">{TODAY_CN}（周六）</p >
+    <p style="color:#90caf9;margin:5px 0 0;font-size:14px;">{TODAY_CN}</p >
 </div>
 <div style="padding:16px;">
     <p style="font-size:13px;color:#666;margin:0 0 12px;">⏱ 更新时间：{datetime.now().strftime('%Y年%m月%d日 %H:%M')}（北京时间）</p >
-    <p style="font-size:13px;color:#666;margin:0 0 16px;">📊 数据来源：NewsAPI、DeepSeek AI 分析</p >
+    <p style="font-size:13px;color:#666;margin:0 0 16px;">📊 数据来源：全球新闻聚合 + DeepSeek AI 分析</p >
     <table style="width:100%;border-collapse:collapse;">
         {html_body}
     </table>
@@ -115,4 +119,4 @@ with smtplib.SMTP_SSL("smtp.qq.com", 465) as server:
     server.login(SENDER, QQ_PASS)
     server.send_message(msg)
 
-print("✅ HTML日报已发送")
+print("✅ 全球日报已发送")
