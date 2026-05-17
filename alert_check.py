@@ -13,9 +13,10 @@ now = datetime.now()
 print("开始执行紧急检查...")
 today = now.strftime("%Y-%m-%d")
 params = {
-    "q": "病毒 OR 疫情 OR 感染 OR 人传人 OR 动物传人",
+    "q": "virus OR outbreak OR pandemic OR 病毒 OR 疫情 OR 感染",
     "from": today, "sortBy": "publishedAt", "pageSize": 10,
-    "language": "zh", "apiKey": NEWS_API_KEY
+    # 不限语言
+    "apiKey": NEWS_API_KEY
 }
 try:
     resp = requests.get("https://newsapi.org/v2/everything", params=params, timeout=15)
@@ -29,7 +30,9 @@ try:
 except Exception as e:
     print(f"新闻获取失败：{e}"); exit(1)
 
-prompt = f"""根据以下最新病毒/疫情新闻，判断是否存在需要紧急关注的严重事件。严重事件定义为：感染人数超过30人，或直接威胁中国境内安全。
+prompt = f"""注意：以下新闻可能包含英文内容，请先翻译成中文再判断。reason字段用中文描述。
+
+根据以下最新病毒/疫情新闻，判断是否存在需要紧急关注的严重事件。严重事件定义为：感染人数超过30人，或直接威胁中国境内安全。
 
 请只输出一个JSON对象，不要附加任何其他文字：
 {{"alert": false, "reason": "", "infections": 0, "threat_to_china": false}}
