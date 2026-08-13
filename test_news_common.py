@@ -23,3 +23,23 @@ class NewsCommonTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LlmFallbackTests(unittest.TestCase):
+    def test_provider_fallback(self):
+        import os
+        from unittest.mock import patch
+        from news_common import Settings, call_llm
+
+        settings = Settings("", "deepseek-key", "openai-key", "", "mail-pass", "a@example.com", "b@example.com")
+        calls = []
+
+        def fake_completion(url, key, model, prompt, *, max_tokens, temperature):
+            calls.append(key)
+            if key == "deepseek-key":
+                raise RuntimeError("quota exhausted")
+            return "fallback response"
+
+        with patch.dict(os.environ, {"AI_FALLBACK_PROVIDERS": "deepseek,openai"}, clear=False), patch("news_common._chat_completion", side_effect=fake_completion):
+            self.assertEqual(call_llm(settings, "hello"), "fallback response")
+        self.assertEqual(calls, ["deepseek-key", "openai-key"])

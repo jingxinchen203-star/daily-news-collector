@@ -4,8 +4,7 @@ from __future__ import annotations
 import html
 
 from news_common import (
-    call_deepseek,
-    fetch_articles,
+    call_llm,
     format_articles,
     load_settings,
     now_beijing,
@@ -57,9 +56,10 @@ def main() -> None:
     settings = load_settings()
     generated_at = now_beijing().strftime("%Y年%m月%d日 %H:%M（北京时间）")
     print("开始生成每日病毒疫情简报……")
+    from news_sources import fetch_articles
     articles = fetch_articles(settings.news_api_key, hours=24, page_size=20)
     news_text = format_articles(articles, limit=10)
-    report = call_deepseek(settings.deepseek_api_key, build_prompt(news_text, generated_at), max_tokens=2200)
+    report = call_llm(settings, build_prompt(news_text, generated_at), max_tokens=2200)
     html_body = build_html(report, articles, generated_at)
     plain_body = f"每日全球病毒疫情简报\n{generated_at}\n\n{report}\n\n原始新闻：\n{news_text}"
     send_html_email(settings, f"每日病毒疫情简报 | {now_beijing():%Y-%m-%d}", html_body, plain_body)

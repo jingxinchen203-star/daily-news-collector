@@ -18,19 +18,44 @@
 
 | 名称 | 必填 | 说明 |
 | --- | --- | --- |
-| `NEWS_API_KEY` | 是 | NewsAPI 的访问密钥 |
-| `DEEPSEEK_API_KEY` | 是 | DeepSeek API 密钥 |
+| `NEWS_API_KEY` | 否 | NewsAPI 的访问密钥；不设置时仍可使用 RSS 新闻源 |
+| `DEEPSEEK_API_KEY` | 至少一个模型密钥 | DeepSeek API 密钥 |
+| `OPENAI_API_KEY` | 至少一个模型密钥 | OpenAI API 密钥 |
+| `ANTHROPIC_API_KEY` | 至少一个模型密钥 | Claude/Anthropic API 密钥 |
 | `QQ_EMAIL_PASSWORD` | 是 | QQ 邮箱 SMTP 授权码，不是网页登录密码 |
 | `NEWS_SENDER` | 否 | 发件邮箱；不设置时使用旧项目中的默认地址 |
 | `NEWS_RECEIVER` | 否 | 收件邮箱；不设置时默认发送给发件邮箱 |
 
-可选的 repository variable：
+可选的 repository variables：
+
+| 名称 | 默认值 | 说明 |
+| --- | --- | --- |
+| `NEWS_RSS_URLS` | ECDC 禽流感和猴痘 RSS | 以英文逗号分隔的 RSS/Atom 地址；可替换或增加 WHO、CDC、卫生部门等来源 |
+| `AI_FALLBACK_PROVIDERS` | `deepseek,openai,anthropic` | 模型回退顺序；只会尝试已配置密钥的提供商 |
+| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI 模型名称 |
+| `ANTHROPIC_MODEL` | `claude-3-5-haiku-latest` | Claude 模型名称 |
+
+其他可选的 repository variables：
 
 | 名称 | 默认值 | 说明 |
 | --- | --- | --- |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | 使用的 DeepSeek 模型名称 |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1/chat/completions` | OpenAI 兼容接口地址；可用于兼容 OpenAI Chat Completions 的服务 |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com/v1/messages` | Anthropic Messages API 地址 |
 
 请不要把密钥写入代码、README、日志或提交记录。若密钥曾经出现在公开仓库中，应立即在对应服务后台撤销并重新生成。
+
+## 扩展新闻源和模型
+
+新闻源分为两类。`NEWS_API_KEY` 可选，用于调用 NewsAPI；`NEWS_RSS_URLS` 可配置任意公开 RSS/Atom 订阅，程序会解析标题、摘要、链接和发布时间，并去重。默认已经配置 ECDC 的禽流感和猴痘 RSS。增加来源时，只需要在仓库变量中填写逗号分隔的地址，例如：
+
+```text
+https://www.ecdc.europa.eu/en/taxonomy/term/323//feed,https://example.org/health/feed.xml
+```
+
+模型采用自动回退机制。程序按 `AI_FALLBACK_PROVIDERS` 的顺序尝试已配置的密钥；如果 DeepSeek 因余额、额度、限流或接口错误失败，就会继续尝试 OpenAI，再尝试 Claude。OpenAI 使用 Chat Completions 兼容格式，Claude 使用 `/v1/messages` 格式，因此三类提供商可以共用同一个日报和预警流程。
+
+建议至少配置两个模型提供商，这样单一账户额度耗尽时仍能继续生成邮件。模型服务的调用费用、限额和可用模型名称由对应服务商账户决定，项目不会绕过服务商的额度限制。
 
 ## 本地运行
 

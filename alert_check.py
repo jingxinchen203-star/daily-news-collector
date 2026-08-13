@@ -4,8 +4,7 @@ from __future__ import annotations
 import html
 
 from news_common import (
-    call_deepseek,
-    fetch_articles,
+    call_llm,
     format_articles,
     load_settings,
     now_beijing,
@@ -48,11 +47,12 @@ def build_alert_html(reason: str, infections: int, threat: bool, articles: list[
 def main() -> None:
     settings = load_settings()
     print("开始执行紧急检查……")
+    from news_sources import fetch_articles
     articles = fetch_articles(settings.news_api_key, hours=24, page_size=20)
     if not articles:
         print("近24小时无可用新闻，跳过预警。")
         return
-    result = parse_json_response(call_deepseek(settings.deepseek_api_key, build_prompt(format_articles(articles, limit=20)), max_tokens=500, temperature=0.1))
+    result = parse_json_response(call_llm(settings, build_prompt(format_articles(articles, limit=20)), max_tokens=500, temperature=0.1))
     alert = result.get("alert") is True
     if not alert:
         print("未达到预警条件。")
