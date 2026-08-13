@@ -1,122 +1,70 @@
-import requests, smtplib, os
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+"""Collect recent public-health news, summarize it, and send a daily email."""
+from __future__ import annotations
 
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
-DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY")
-QQ_PASS = os.getenv("QQ_EMAIL_PASSWORD")
-SENDER = "3502739363@qq.com"
-RECEIVER = "3502739363@qq.com"
-TODAY = datetime.now().strftime("%Y-%m-%d")
-TODAY_CN = datetime.now().strftime("%Y年%m月%d日")
+import html
 
-# 1. 抓取全球新闻（不限语言）
-params = {
-    "q": "virus OR outbreak OR pandemic OR epidemic OR 病毒 OR 疫情",
-    "from": TODAY,
-    "sortBy": "popularity",
-    "pageSize": 15,
-    # 不限语言，搜全球新闻
-    "apiKey": NEWS_API_KEY
-}
-try:
-    resp = requests.get("https://newsapi.org/v2/everything", params=params, timeout=15)
-    articles = resp.json().get("articles", [])
-    news_list = []
-    for a in articles[:10]:
-        title = a.get('title','无标题')
-        desc = a.get('description','')
-        url = a.get('url','')
-        news_list.append(f"📰 {title}\n   {desc}\n   来源：{url}")
-    news_text = "\n".join(news_list) if news_list else "（暂无相关新闻）"
-except Exception as e:
-    news_text = f"新闻获取失败：{str(e)}"
+from news_common import (
+    call_llm,
+    format_articles,
+    load_settings,
+    now_beijing,
+    render_report_sections,
+    safe_url,
+    send_html_email,
+)
 
-# 2. AI分析（要求翻译英文+输出中文）
-prompt = f"""注意：以下新闻可能包含英文内容，请先将其翻译成中文，再进行分析。最终报告必须全部使用中文输出，不得出现英文。
 
-你是一位病毒学与公共卫生专家。以下是今日（{TODAY_CN}）全球病毒/疫情新闻摘要：
+def build_prompt(news_text: str, date_text: str) -> str:
+    return f"""你是一位病毒学与公共卫生信息分析师。请基于下面近24小时的公开新闻，先核对新闻中的时间、地点和数字，再用简体中文生成一份克制、可核查的日报。不要把新闻报道等同于确诊事实；无法确认的内容必须标注“报道未证实”或“暂无数据”。
 
+日期：{date_text}
+新闻材料：
 {news_text}
 
-请严格按以下格式输出：
+请严格使用以下四个分段标题，不要添加其他标题：
+【疫情概况】按地区概括主要事件，列出新闻明确提到的病例或死亡数字；没有明确数字时写“暂无数据”。
+【动物传染病威胁】只说明有来源支持的动物传人线索，并区分已确认与推测。
+【对中国威胁评估】说明是否有直接证据，避免无依据的恐慌性判断。
+【专家建议】给出普通读者可执行的、非诊断性的健康信息，并提醒以当地卫生部门和专业医生意见为准。
 
-【疫情概况】
-分地区列出主要疫情，重点标注感染>30人的事件。
+所有结论都必须严格来自新闻材料；不要补写新闻中没有的事实。"""
 
-【动物传染病威胁】
-可能由动物传人的病毒风险。
 
-【对中国威胁评估】
-是否存在直接威胁。
-
-【专家建议】
-通俗建议。
-
-注意：如无数据请注明。用中文。"""
-payload = {
-    "model": "deepseek-chat",
-    "messages": [{"role": "user", "content": prompt}],
-    "temperature": 0.3, "max_tokens": 2000
-}
-try:
-    ai_resp = requests.post(
-        "https://api.deepseek.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {DEEPSEEK_KEY}", "Content-Type": "application/json"},
-        json=payload, timeout=30
-    )
-    raw = ai_resp.json()["choices"][0]["message"]["content"]
-    sections = raw.split("【")
-    html_body = ""
-    for s in sections:
-        s = s.strip()
-        if not s: continue
-        if "】" in s:
-            title, content = s.split("】", 1)
-            html_body += f"""
-            <tr><td colspan="2" style="background-color:#f0f7ff;padding:10px;font-size:16px;font-weight:bold;border-left:4px solid #2196F3;">
-                🦠 {title}
-            </td></tr>
-            <tr><td colspan="2" style="padding:10px;font-size:14px;line-height:1.6;color:#333;">
-                {content.replace(chr(10),'<br>')}
-            </td></tr>"""
-except Exception as e:
-    html_body = f"<tr><td>AI分析失败：{str(e)}</td></tr>"
-
-# 3. 组装HTML邮件
-html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:'Microsoft YaHei',Arial,sans-serif;margin:0;padding:20px;background-color:#f5f5f5;">
-<div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+def build_html(report: str, articles: list[dict], generated_at: str) -> str:
+    links = []
+    for article in articles[:10]:
+        title = html.escape(article.get("title", "无标题"))
+        source = html.escape((article.get("source") or {}).get("name", "未知来源"))
+        url = html.escape(safe_url(article.get("url", "")), quote=True)
+        links.append(f'<li><a href="{url}">{title}</a>（{source}）</li>')
+    sources = "".join(links) or "<li>暂无可用来源</li>"
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:'Microsoft YaHei',Arial,sans-serif;margin:0;padding:20px;background:#f5f7fb;">
+<div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
 <div style="background:linear-gradient(135deg,#1a237e,#0d47a1);padding:20px;text-align:center;">
-    <h1 style="color:#fff;margin:0;font-size:22px;">🦠 每日全球病毒疫情简报</h1>
-    <p style="color:#90caf9;margin:5px 0 0;font-size:14px;">{TODAY_CN}</p >
-</div>
-<div style="padding:16px;">
-    <p style="font-size:13px;color:#666;margin:0 0 12px;">⏱ 更新时间：{datetime.now().strftime('%Y年%m月%d日 %H:%M')}（北京时间）</p >
-    <p style="font-size:13px;color:#666;margin:0 0 16px;">📊 数据来源：全球新闻聚合 + DeepSeek AI 分析</p >
-    <table style="width:100%;border-collapse:collapse;">
-        {html_body}
-    </table>
-</div>
-<div style="background:#f8f9fa;padding:12px;text-align:center;font-size:12px;color:#999;">
-    本邮件由 AI 自动监测生成 · 数据仅供参考 · {TODAY}
-</div>
-</div>
-</body>
-</html>"""
+<h1 style="color:#fff;margin:0;font-size:22px;">每日全球病毒疫情简报</h1>
+<p style="color:#bbdefb;margin:8px 0 0;font-size:14px;">{generated_at}</p></div>
+<div style="padding:16px;"><p style="font-size:13px;color:#666;margin:0 0 16px;">数据范围：近24小时公开新闻；报告由 AI 辅助整理，仅供信息参考。</p>
+<table style="width:100%;border-collapse:collapse;">{render_report_sections(report)}</table>
+<h3 style="font-size:16px;color:#1a237e;border-bottom:1px solid #eee;padding-bottom:8px;">原始新闻来源</h3>
+<ul style="font-size:13px;line-height:1.8;padding-left:20px;">{sources}</ul></div>
+<div style="background:#f8f9fa;padding:12px;text-align:center;font-size:12px;color:#888;">请以当地卫生部门和专业医生的最新意见为准。</div>
+</div></body></html>"""
 
-msg = MIMEMultipart("alternative")
-msg["Subject"] = f"🦠 每日病毒疫情简报 | {TODAY_CN}"
-msg["From"] = SENDER
-msg["To"] = RECEIVER
-msg.attach(MIMEText("请使用支持HTML的邮箱客户端查看", "plain", "utf-8"))
-msg.attach(MIMEText(html, "html", "utf-8"))
 
-with smtplib.SMTP_SSL("smtp.qq.com", 465) as server:
-    server.login(SENDER, QQ_PASS)
-    server.send_message(msg)
+def main() -> None:
+    settings = load_settings()
+    generated_at = now_beijing().strftime("%Y年%m月%d日 %H:%M（北京时间）")
+    print("开始生成每日病毒疫情简报……")
+    from news_sources import fetch_articles
+    articles = fetch_articles(settings.news_api_key, hours=24, page_size=20)
+    news_text = format_articles(articles, limit=10)
+    report = call_llm(settings, build_prompt(news_text, generated_at), max_tokens=2200)
+    html_body = build_html(report, articles, generated_at)
+    plain_body = f"每日全球病毒疫情简报\n{generated_at}\n\n{report}\n\n原始新闻：\n{news_text}"
+    send_html_email(settings, f"每日病毒疫情简报 | {now_beijing():%Y-%m-%d}", html_body, plain_body)
+    print(f"日报已发送，共处理 {len(articles[:10])} 条新闻。")
 
-print("✅ 全球日报已发送")
+
+if __name__ == "__main__":
+    main()
