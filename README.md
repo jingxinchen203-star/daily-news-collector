@@ -1,5 +1,8 @@
 # Daily News Collector
 
+![Daily News Collector project hero](assets/project-hero.png)
+
+
 这是一个基于 GitHub Actions 的公共卫生新闻监测工具。它从 NewsAPI 获取近 24 小时的病毒与疫情相关新闻，调用 DeepSeek 进行中文整理，并通过 QQ 邮箱发送每日简报；另一个工作流每 30 分钟检查是否出现需要人工复核的高风险事件。
 
 > 本项目是信息整理工具，不是医疗诊断、疫情预测或官方预警系统。所有结论都应回到原始新闻、当地卫生部门和专业医生进行核查。
